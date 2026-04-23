@@ -31,6 +31,7 @@ clothing / lighting, and it naturally handles dynamic signs.
 | `model.py` | Keras implementation of the CNN-LSTM architecture (Table II of the paper). |
 | `feature_extraction.py` | MediaPipe Holistic wrapper; produces the 258-dim vector; also implements the horizontal-mirror augmentation with correct L/R landmark swapping. |
 | `data_collection.py` | Webcam recorder. Captures N sequences of 30 frames per class and saves them as `.npy`. |
+| `ingest_kaggle.py` | Converts a Kaggle ISL **image** dataset (A–Z, 0–9) into the same `(30, 258)` `.npy` format `train.py` expects. |
 | `train.py` | Training loop — Adam, cosine-anneal 1e-3 → 1e-5 over 100 epochs, batch 32, class-weighted CE, temporal-jitter / Gaussian-noise / horizontal-mirror augmentation, early stopping (patience 15). |
 | `realtime_inference.py` | Live webcam inference with a 30-frame sliding window and 50% overlap, matching Section III.B. |
 | `requirements.txt` | Python dependencies. |
@@ -43,10 +44,49 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-## 1 — Collect data
+## 1 — Get data
 
-Pick the classes you want to support. For a small demo, start with 5–10
-signs so you can validate the pipeline quickly.
+You have two ways to populate `data/`. They produce the same on-disk
+format and can be mixed (e.g. Kaggle for letters/digits + webcam for
+custom dynamic signs).
+
+### Option A — Pre-train on Kaggle ISL alphabets + numbers
+
+Uses [`soumyakushwaha/indian-sign-language-dataset`](https://www.kaggle.com/datasets/soumyakushwaha/indian-sign-language-dataset)
+(A–Z and digits as static images). Each image is converted into a
+30-frame "static" sequence by replicating its 258-dim landmark vector
+across time; the training augmentation (Gaussian noise + horizontal
+mirror) breaks the trivial frame-to-frame symmetry.
+
+```bash
+# 1. Download + unzip the dataset (kaggle CLI route)
+pip install kaggle
+# Put your kaggle.json API token at ~/.kaggle/kaggle.json first
+kaggle datasets download -d soumyakushwaha/indian-sign-language-dataset \
+    -p ./kaggle_isl --unzip
+
+# Or: download the ZIP manually from the Kaggle web UI and unzip
+# it into ./kaggle_isl/
+
+# 2. Convert images -> (30, 258) .npy sequences
+python ingest_kaggle.py --src ./kaggle_isl --out data/
+```
+
+The script auto-discovers whatever class subfolders exist (handles
+`1-9 + A-Z`, `0-9 + A-Z`, etc.) and prints a per-class summary of
+images converted vs. skipped (e.g. images where MediaPipe couldn't
+detect a hand). Pass `--limit_per_class 50` for a fast smoke test.
+
+Caveats:
+* Static-image inputs can't represent the few ISL letters that are
+  inherently dynamic (e.g. `J`, `H`) — the model will learn their
+  end-pose only.
+* If the dataset is single-handed but ISL canonically uses two hands
+  for that sign, the missing hand's 63 dims are zeros for every sample,
+  so the model can't generalise to two-handed signing of the same
+  letter without additional data.
+
+### Option B — Record your own with the webcam
 
 ```bash
 python data_collection.py \
