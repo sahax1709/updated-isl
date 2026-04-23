@@ -1,4 +1,4 @@
-# ISL CNN-LSTM (paper implementation)
+# ISL CNN-LSTM 
 
 Drop-in replacement for a simple static-image ISL classifier, implementing
 the CNN-LSTM hybrid architecture from *"ISL-Web: A Deep Learning-Enabled
